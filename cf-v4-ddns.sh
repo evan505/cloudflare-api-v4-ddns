@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -o errexit
 set -o nounset
@@ -95,19 +96,19 @@ if [ "$CFRECORD_NAME" != "$CFZONE_NAME" ] && ! [ -z "${CFRECORD_NAME##*$CFZONE_N
   echo " => Hostname is not a FQDN, assuming $CFRECORD_NAME"
 fi
 
-# Get current and old WAN ip
-WAN_IP=`curl -s ${WANIPSITE}`
-WAN_IP_FILE=$HOME/.cf-wan_ip_$CFRECORD_NAME.txt
-if [ -f $WAN_IP_FILE ]; then
-  OLD_WAN_IP=`cat $WAN_IP_FILE`
+# Get current and old internel ip
+INTERNEL_IP=$(ipconfig getifaddr en0)
+INTERNEL_IP_FILE=$HOME/.cf-INTERNEL_IP_$CFRECORD_NAME.txt
+if [ -f $INTERNEL_IP_FILE ]; then
+  OLD_INTERNEL_IP=`cat $INTERNEL_IP_FILE`
 else
   echo "No file, need IP"
-  OLD_WAN_IP=""
+  OLD_INTERNEL_IP=""
 fi
 
-# If WAN IP is unchanged an not -f flag, exit here
-if [ "$WAN_IP" = "$OLD_WAN_IP" ] && [ "$FORCE" = false ]; then
-  echo "WAN IP Unchanged, to update anyway use flag -f true"
+# If INTERNEL IP is unchanged an not -f flag, exit here
+if [ "$INTERNEL_IP" = "$OLD_INTERNEL_IP" ] && [ "$FORCE" = false ]; then
+  echo "INTERNEL IP Unchanged, to update anyway use flag -f true"
   exit 0
 fi
 
@@ -120,26 +121,26 @@ if [ -f $ID_FILE ] && [ $(wc -l $ID_FILE | cut -d " " -f 1) == 4 ] \
     CFRECORD_ID=$(sed -n '2,1p' "$ID_FILE")
 else
     echo "Updating zone_identifier & record_identifier"
-    CFZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json" | grep -Po '(?<="id":")[^"]*' | head -1 )
-    CFRECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records?name=$CFRECORD_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json"  | grep -Po '(?<="id":")[^"]*' | head -1 )
+    CFZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json" | grep -E -o '"id":"[a-zA-Z0-9]*"' | sed 's/"id":"//;s/"$//' | head -1)
+    CFRECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records?name=$CFRECORD_NAME" -H "X-Auth-Email: $CFUSER" -H "X-Auth-Key: $CFKEY" -H "Content-Type: application/json"  | grep -E -o '"id":"[a-zA-Z0-9]*"' | sed 's/"id":"//;s/"$//' | head -1)
     echo "$CFZONE_ID" > $ID_FILE
     echo "$CFRECORD_ID" >> $ID_FILE
     echo "$CFZONE_NAME" >> $ID_FILE
     echo "$CFRECORD_NAME" >> $ID_FILE
 fi
 
-# If WAN is changed, update cloudflare
-echo "Updating DNS to $WAN_IP"
+# If INTERNEL ip is changed, update cloudflare
+echo "Updating DNS to $INTERNEL_IP"
 
 RESPONSE=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CFZONE_ID/dns_records/$CFRECORD_ID" \
   -H "X-Auth-Email: $CFUSER" \
   -H "X-Auth-Key: $CFKEY" \
   -H "Content-Type: application/json" \
-  --data "{\"id\":\"$CFZONE_ID\",\"type\":\"$CFRECORD_TYPE\",\"name\":\"$CFRECORD_NAME\",\"content\":\"$WAN_IP\", \"ttl\":$CFTTL}")
+  --data "{\"id\":\"$CFZONE_ID\",\"type\":\"$CFRECORD_TYPE\",\"name\":\"$CFRECORD_NAME\",\"content\":\"$INTERNEL_IP\", \"ttl\":$CFTTL}")
 
 if [ "$RESPONSE" != "${RESPONSE%success*}" ] && [ "$(echo $RESPONSE | grep "\"success\":true")" != "" ]; then
   echo "Updated succesfuly!"
-  echo $WAN_IP > $WAN_IP_FILE
+  echo $INTERNEL_IP > $INTERNEL_IP_FILE
   exit
 else
   echo 'Something went wrong :('
